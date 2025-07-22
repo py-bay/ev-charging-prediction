@@ -1,0 +1,51 @@
+# Python & Virtualenv
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+.env
+.env.*
+.venv/
+venv/
+dist/
+build/
+*.log
+*.sqlite3
+
+# Example-only
+!.env.example
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+notebooks/output/
+notebooks/checkpoints/
+.notebook_cache/
+
+# Ruff
+ruff_cache/
+
+# IDEs
+.idea/
+.vscode/
+*.code-workspace
+
+# Data
+data/raw/
+data/interim/
+data/processed/
+data/output/
+*.csv
+*.parquet
+*.feather
+*.xls
+*.xlsx
+
+# Experiment outputs
+reports/
+figures/
+results/
+experiments/
