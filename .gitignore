@@ -34,18 +34,33 @@ ruff_cache/
 *.code-workspace
 
 # Data
-data/raw/
-data/interim/
-data/processed/
-data/output/
-*.csv
+data/*.csv
+!data/.gitkeep
 *.parquet
 *.feather
 *.xls
 *.xlsx
 
-# Experiment outputs
-reports/
-figures/
-results/
-experiments/
+# Model outputs
+outputs/models/*
+outputs/results/*
+outputs/plots/*
+outputs/processed/*
+!outputs/models/.gitkeep
+!outputs/results/.gitkeep
+!outputs/plots/.gitkeep
+!outputs/processed/.gitkeep
+
+# Logs
+logs/
+*.log
+
+# UV
+.uv/
+uv.lock
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
