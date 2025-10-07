@@ -1,6 +1,6 @@
 """Entry point for running the CLI as a module."""
 
-from ev_charging_prediction import  main
+from solar_tracker_forecast import main
 
 if __name__ == "__main__":
     main()

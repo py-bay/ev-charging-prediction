@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ev_charge_forecasting.config.models import Config
-from ev_charge_forecasting.preprocessing.pipeline import DataPreprocessor
+from src.config import Config
+from src.preprocessing.pipeline import DataPreprocessor
 
 
 @pytest.fixture

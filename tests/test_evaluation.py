@@ -1,17 +1,16 @@
 """Tests for evaluation module."""
 
 import numpy as np
-import pandas as pd
 import pytest
 
-from ev_charge_forecasting.config.models import Config
-from ev_charge_forecasting.evaluation.metrics import ModelEvaluator
+from src.config import Config, load_config
+from src.evaluation.metrics import ModelEvaluator
 
 
 @pytest.fixture
-def config():
+def config() -> Config:
     """Create a test configuration."""
-    return Config()
+    return load_config()
 
 
 @pytest.fixture

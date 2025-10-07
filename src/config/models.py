@@ -120,7 +120,7 @@ class Config(BaseModel):
         return feature_sets[feature_set_name]
 
 
-def load_config(config_path: Path = "config/config.yaml") -> Config:
+def load_config(config_path: Path = Path("config/config.yaml")) -> Config:
     """
     Load configuration from YAML file.
 
