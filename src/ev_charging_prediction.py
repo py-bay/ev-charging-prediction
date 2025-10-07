@@ -1,4 +1,4 @@
-"""Command-line interface for EV charge forecasting."""
+"""Command-line interface for EV charge prediction."""
 
 from pathlib import Path
 from typing import Optional
@@ -6,14 +6,14 @@ from typing import Optional
 import typer
 from loguru import logger
 
-from config import load_config
-from evaluation import ModelEvaluator
-from models import LSTMModel, RandomForestModel
-from preprocessing import DataPreprocessor
-from logging import setup_logging
+from src.config import load_config
+from src.evaluation import ModelEvaluator
+from src.models import LSTMModel, RandomForestModel
+from src.preprocessing import DataPreprocessor
+from src.logging import setup_logging
 
 app = typer.Typer(
-    help="EV Charge Forecasting - ML-based optimal charging window prediction",
+    help="EV Charge Prediction - ML-based optimal charging window prediction",
     add_completion=False,
 )
 
@@ -63,14 +63,14 @@ def preprocess(
 
     try:
         # Load configuration
-        config = load_config(config_path)
+        config = load_config(Path(config_path))
         logger.info(f"Loaded configuration from {config_path}")
 
         # Initialize preprocessor
         preprocessor = DataPreprocessor(config)
 
         # Run preprocessing pipeline
-        X_train, X_test, y_train, y_test = preprocessor.run_pipeline(
+        x_train, x_test, y_train, y_test = preprocessor.run_pipeline(
             feature_set=feature_set,
             label_threshold=label_threshold,
             label_method=label_method,
@@ -80,7 +80,7 @@ def preprocess(
         preprocessor.save_processed_data()
 
         logger.info("Preprocessing completed successfully!")
-        logger.info(f"Train samples: {len(X_train)}, Test samples: {len(X_test)}")
+        logger.info(f"Train samples: {len(x_train)}, Test samples: {len(x_test)}")
 
     except Exception as e:
         logger.error(f"Preprocessing failed: {e}")
@@ -265,7 +265,7 @@ def evaluate(
         # Evaluate model
         evaluator = ModelEvaluator(config)
         model_name = f"{model}_{feature_set}_t{label_threshold}"
-        results = evaluator.generate_evaluation_report(model_instance, X_test, y_test, model_name)
+        evaluator.generate_evaluation_report(model_instance, X_test, y_test, model_name)
 
         logger.info("Evaluation completed successfully!")
         logger.info(f"Results saved to {config.output_paths.results}")
@@ -350,7 +350,7 @@ def train_all(
 
             # Train model
             logger.info(f"Training {model_type}...")
-            train_info = model_instance.train(X_train, y_train)
+            model_instance.train(X_train, y_train)
 
             # Save model
             model_name = f"{model_type}_{feature_set}_t{label_threshold}"
@@ -359,9 +359,7 @@ def train_all(
             # Evaluate model
             logger.info(f"Evaluating {model_type}...")
             evaluator = ModelEvaluator(config)
-            results = evaluator.generate_evaluation_report(
-                model_instance, X_test, y_test, model_name
-            )
+            evaluator.generate_evaluation_report(model_instance, X_test, y_test, model_name)
 
         logger.info("")
         logger.info("=" * 80)
