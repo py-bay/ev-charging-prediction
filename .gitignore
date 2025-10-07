@@ -53,7 +53,6 @@ outputs/processed/*
 
 # Logs
 logs/
-*.log
 
 # UV
 .uv/
@@ -64,3 +63,6 @@ uv.lock
 .coverage
 htmlcov/
 .tox/
+
+# claude
+.claude
