@@ -9,7 +9,7 @@ import pandas as pd
 from loguru import logger
 from sklearn.ensemble import RandomForestClassifier
 
-from ..config.models import Config
+from src.config.models import Config
 
 
 class RandomForestModel:
@@ -50,12 +50,12 @@ class RandomForestModel:
         logger.info(f"Built RandomForestClassifier with config: {rf_config.model_dump()}")
         return model
 
-    def train(self, X_train: pd.DataFrame, y_train: pd.Series) -> Dict[str, Any]:
+    def train(self, x_train: pd.DataFrame, y_train: pd.Series) -> Dict[str, Any]:
         """
         Train the Random Forest model.
 
         Args:
-            X_train: Training features
+            x_train: Training features
             y_train: Training labels
 
         Returns:
@@ -65,16 +65,16 @@ class RandomForestModel:
         logger.info("Training Random Forest model")
         logger.info("=" * 60)
 
-        self.feature_names = list(X_train.columns)
+        self.feature_names = list(x_train.columns)
 
         # Build model
         self.model = self.build_model()
 
         # Train
-        logger.info(f"Training on {len(X_train)} samples with {len(self.feature_names)} features")
-        self.model.fit(X_train, y_train)
+        logger.info(f"Training on {len(x_train)} samples with {len(self.feature_names)} features")
+        self.model.fit(x_train, y_train)
 
-        # Get feature importances
+        # Get feature importance's
         feature_importance = pd.DataFrame(
             {"feature": self.feature_names, "importance": self.model.feature_importances_}
         ).sort_values("importance", ascending=False)
@@ -88,7 +88,7 @@ class RandomForestModel:
         return {
             "model_type": "randomforest",
             "n_features": len(self.feature_names),
-            "n_samples": len(X_train),
+            "n_samples": len(x_train),
             "feature_importances": feature_importance.to_dict("records"),
         }
 

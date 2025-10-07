@@ -11,7 +11,7 @@ import torch.optim as optim
 from loguru import logger
 from torch.utils.data import DataLoader, TensorDataset
 
-from ..config.models import Config
+from src.config.models import Config
 
 
 class LSTMClassifier(nn.Module):

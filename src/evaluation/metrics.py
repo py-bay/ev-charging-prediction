@@ -21,7 +21,7 @@ from sklearn.metrics import (
     roc_curve,
 )
 
-from ..config.models import Config
+from src.config.models import Config
 
 
 class ModelEvaluator:
@@ -38,9 +38,8 @@ class ModelEvaluator:
         """
         self.config = config
 
-    def compute_metrics(
-        self, y_true: np.ndarray, y_pred: np.ndarray, y_proba: np.ndarray | None = None
-    ) -> Dict[str, Any]:
+    @staticmethod
+    def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray, y_proba: np.ndarray | None = None) -> Dict[str, Any]:
         """
         Compute evaluation metrics.
 
@@ -82,18 +81,18 @@ class ModelEvaluator:
         return metrics
 
     def evaluate_model(
-        self,
-        model,
-        X_test: pd.DataFrame,
-        y_test: pd.Series,
-        model_name: str,
+            self,
+            model,
+            x_test: pd.DataFrame,
+            y_test: pd.Series,
+            model_name: str,
     ) -> Dict[str, Any]:
         """
         Evaluate a trained model.
 
         Args:
             model: Trained model (RandomForestModel or LSTMModel)
-            X_test: Test features
+            x_test: Test features
             y_test: Test labels
             model_name: Name of the model
 
@@ -105,7 +104,7 @@ class ModelEvaluator:
         logger.info("=" * 60)
 
         # Make predictions
-        y_pred = model.predict(X_test)
+        y_pred = model.predict(x_test)
 
         # Handle sequence-based models (LSTM) that may return fewer predictions
         if len(y_pred) < len(y_test):
@@ -113,13 +112,13 @@ class ModelEvaluator:
                 f"Model returned {len(y_pred)} predictions for {len(y_test)} samples. "
                 "Aligning labels..."
             )
-            y_test_aligned = y_test.iloc[-len(y_pred) :]
+            y_test_aligned = y_test.iloc[-len(y_pred):]
         else:
             y_test_aligned = y_test
 
         # Get predicted probabilities
         try:
-            y_proba = model.predict_proba(X_test)
+            y_proba = model.predict_proba(x_test)
             if y_proba.shape[1] == 2:
                 y_proba_positive = y_proba[:, 1]  # Probability of positive class
             else:
@@ -147,9 +146,8 @@ class ModelEvaluator:
 
         return results
 
-    def plot_confusion_matrix(
-        self, y_true: np.ndarray, y_pred: np.ndarray, model_name: str, output_dir: Path
-    ):
+    @staticmethod
+    def plot_confusion_matrix(y_true: np.ndarray, y_pred: np.ndarray, model_name: str, output_dir: Path) -> None:
         """
         Plot and save confusion matrix.
 
@@ -182,12 +180,12 @@ class ModelEvaluator:
 
         logger.info(f"Saved confusion matrix to {output_path}")
 
+    @staticmethod
     def plot_roc_curve(
-        self,
-        y_true: np.ndarray,
-        y_proba: np.ndarray,
-        model_name: str,
-        output_dir: Path,
+            y_true: np.ndarray,
+            y_proba: np.ndarray,
+            model_name: str,
+            output_dir: Path,
     ):
         """
         Plot and save ROC curve.
@@ -224,12 +222,12 @@ class ModelEvaluator:
         except Exception as e:
             logger.error(f"Failed to plot ROC curve: {e}")
 
+    @staticmethod
     def plot_precision_recall_curve(
-        self,
-        y_true: np.ndarray,
-        y_proba: np.ndarray,
-        model_name: str,
-        output_dir: Path,
+            y_true: np.ndarray,
+            y_proba: np.ndarray,
+            model_name: str,
+            output_dir: Path,
     ):
         """
         Plot and save precision-recall curve.
@@ -261,7 +259,8 @@ class ModelEvaluator:
         except Exception as e:
             logger.error(f"Failed to plot precision-recall curve: {e}")
 
-    def save_results(self, results: Dict[str, Any], output_dir: Path, model_name: str):
+    @staticmethod
+    def save_results(results: Dict[str, Any], output_dir: Path, model_name: str):
         """
         Save evaluation results to JSON.
 
@@ -279,18 +278,18 @@ class ModelEvaluator:
         logger.info(f"Saved evaluation results to {output_path}")
 
     def generate_evaluation_report(
-        self,
-        model,
-        X_test: pd.DataFrame,
-        y_test: pd.Series,
-        model_name: str,
+            self,
+            model,
+            x_test: pd.DataFrame,
+            y_test: pd.Series,
+            model_name: str,
     ) -> Dict[str, Any]:
         """
         Generate complete evaluation report with metrics and visualizations.
 
         Args:
             model: Trained model
-            X_test: Test features
+            x_test: Test features
             y_test: Test labels
             model_name: Name of the model
 
@@ -298,20 +297,20 @@ class ModelEvaluator:
             Evaluation results dictionary
         """
         # Evaluate model
-        results = self.evaluate_model(model, X_test, y_test, model_name)
+        results = self.evaluate_model(model, x_test, y_test, model_name)
 
         # Make predictions for plotting
-        y_pred = model.predict(X_test)
+        y_pred = model.predict(x_test)
 
         # Align labels if needed (for LSTM)
         if len(y_pred) < len(y_test):
-            y_test_aligned = y_test.iloc[-len(y_pred) :]
+            y_test_aligned = y_test.iloc[-len(y_pred):]
         else:
             y_test_aligned = y_test
 
         # Get probabilities
         try:
-            y_proba = model.predict_proba(X_test)
+            y_proba = model.predict_proba(x_test)
             if y_proba.shape[1] == 2:
                 y_proba_positive = y_proba[:, 1]
             else:

@@ -6,11 +6,11 @@ from typing import Optional
 import typer
 from loguru import logger
 
-from .config import Config, load_config
-from .evaluation import ModelEvaluator
-from .models import LSTMModel, RandomForestModel
-from .preprocessing import DataPreprocessor
-from .utils import setup_logging
+from config import load_config
+from evaluation import ModelEvaluator
+from models import LSTMModel, RandomForestModel
+from preprocessing import DataPreprocessor
+from logging import setup_logging
 
 app = typer.Typer(
     help="EV Charge Forecasting - ML-based optimal charging window prediction",
@@ -265,9 +265,7 @@ def evaluate(
         # Evaluate model
         evaluator = ModelEvaluator(config)
         model_name = f"{model}_{feature_set}_t{label_threshold}"
-        results = evaluator.generate_evaluation_report(
-            model_instance, X_test, y_test, model_name
-        )
+        results = evaluator.generate_evaluation_report(model_instance, X_test, y_test, model_name)
 
         logger.info("Evaluation completed successfully!")
         logger.info(f"Results saved to {config.output_paths.results}")
