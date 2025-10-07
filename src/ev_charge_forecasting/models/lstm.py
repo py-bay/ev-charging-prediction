@@ -215,7 +215,7 @@ class LSTMModel:
             train_losses.append(avg_loss)
 
             if (epoch + 1) % 5 == 0:
-                logger.info(f"Epoch [{epoch+1}/{lstm_config.epochs}], Loss: {avg_loss:.4f}")
+                logger.info(f"Epoch [{epoch + 1}/{lstm_config.epochs}], Loss: {avg_loss:.4f}")
 
             # Early stopping
             if avg_loss < best_loss:
@@ -224,7 +224,7 @@ class LSTMModel:
             else:
                 patience_counter += 1
                 if patience_counter >= lstm_config.patience:
-                    logger.info(f"Early stopping at epoch {epoch+1}")
+                    logger.info(f"Early stopping at epoch {epoch + 1}")
                     break
 
         logger.info(f"LSTM training completed. Best loss: {best_loss:.4f}")

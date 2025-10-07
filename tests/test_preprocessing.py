@@ -18,9 +18,9 @@ def config():
 def sample_pv_data():
     """Create sample PV data."""
     dates = pd.date_range("2024-01-01", periods=96, freq="15T")
-    return pd.DataFrame(
-        {"timestamp": dates, "pv_power": np.random.uniform(0, 5, 96)}
-    ).set_index("timestamp")
+    return pd.DataFrame({"timestamp": dates, "pv_power": np.random.uniform(0, 5, 96)}).set_index(
+        "timestamp"
+    )
 
 
 @pytest.fixture

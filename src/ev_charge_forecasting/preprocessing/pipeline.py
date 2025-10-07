@@ -60,8 +60,21 @@ class DataPreprocessor:
         """
         # Common timestamp column names
         possible_names = [
-            "timestamp", "time", "datetime", "date", "Date", "Time", "DateTime", "Timestamp",
-            "date_time", "Date_Time", "TIME", "DATE", "DATETIME", "TIMESTAMP", "dt_iso",
+            "timestamp",
+            "time",
+            "datetime",
+            "date",
+            "Date",
+            "Time",
+            "DateTime",
+            "Timestamp",
+            "date_time",
+            "Date_Time",
+            "TIME",
+            "DATE",
+            "DATETIME",
+            "TIMESTAMP",
+            "dt_iso",
         ]
 
         # Check if any of these columns exist
@@ -133,7 +146,9 @@ class DataPreprocessor:
         # Remove the timezone info and parse
         if irradiance_df[timestamp_col].dtype == object:
             # Remove " +0000 UTC" or similar timezone suffixes
-            irradiance_df[timestamp_col] = irradiance_df[timestamp_col].str.replace(r' \+\d{4} UTC$', '', regex=True)
+            irradiance_df[timestamp_col] = irradiance_df[timestamp_col].str.replace(
+                r" \+\d{4} UTC$", "", regex=True
+            )
 
         irradiance_df["timestamp"] = pd.to_datetime(irradiance_df[timestamp_col], utc=True)
 
@@ -150,11 +165,13 @@ class DataPreprocessor:
         irradiance_df = irradiance_df.set_index("timestamp").sort_index()
 
         # Rename to simpler names
-        irradiance_df = irradiance_df.rename(columns={
-            "ghi_cloudy_sky": "irradiance",
-            "ghi_clear_sky": "irradiance_clear_sky",
-            "dni_cloudy_sky": "dni"
-        })
+        irradiance_df = irradiance_df.rename(
+            columns={
+                "ghi_cloudy_sky": "irradiance",
+                "ghi_clear_sky": "irradiance_clear_sky",
+                "dni_cloudy_sky": "dni",
+            }
+        )
 
         logger.info(f"Loaded irradiance data: {len(irradiance_df)} rows")
         logger.info(f"  Date range: {irradiance_df.index.min()} to {irradiance_df.index.max()}")
@@ -168,7 +185,9 @@ class DataPreprocessor:
         # Skip the first 2 header rows
         weather_df = pd.read_csv(weather_path, skiprows=2)
         timestamp_col = self._detect_timestamp_column(weather_df)
-        weather_df["timestamp"] = pd.to_datetime(weather_df[timestamp_col], utc=True)  # Make timezone-aware
+        weather_df["timestamp"] = pd.to_datetime(
+            weather_df[timestamp_col], utc=True
+        )  # Make timezone-aware
         if timestamp_col != "timestamp":
             weather_df = weather_df.drop(columns=[timestamp_col])
         weather_df = weather_df.set_index("timestamp").sort_index()
@@ -198,9 +217,7 @@ class DataPreprocessor:
         Returns:
             Resampled weather dataframe
         """
-        logger.info(
-            f"Resampling weather data to {self.config.preprocessing.resample_interval}..."
-        )
+        logger.info(f"Resampling weather data to {self.config.preprocessing.resample_interval}...")
 
         # Identify categorical columns (e.g., weather_code)
         categorical_cols = ["weather_code"] if "weather_code" in weather_df.columns else []
@@ -284,7 +301,10 @@ class DataPreprocessor:
         return df
 
     def generate_labels(
-        self, df: pd.DataFrame, threshold: float, method: Literal["absolute", "relative"] = "absolute"
+        self,
+        df: pd.DataFrame,
+        threshold: float,
+        method: Literal["absolute", "relative"] = "absolute",
     ) -> pd.DataFrame:
         """
         Generate binary labels for optimal charging windows.
@@ -317,12 +337,18 @@ class DataPreprocessor:
                 df["label"] = (df["pv_surplus"] > threshold).astype(int)
 
                 logger.info(f"  Mean PV power: {df[pv_col].mean():.2f} W")
-                logger.info(f"  Mean household consumption: {df['household_consumption'].mean():.2f} W")
+                logger.info(
+                    f"  Mean household consumption: {df['household_consumption'].mean():.2f} W"
+                )
                 logger.info(f"  Mean PV surplus: {df['pv_surplus'].mean():.2f} W")
             else:
                 # Use configured household consumption as fallback
-                household_consumption = self.config.preprocessing.household_consumption_kw * 1000  # Convert to W
-                logger.info(f"Using configured household_consumption: {household_consumption:.0f} W")
+                household_consumption = (
+                    self.config.preprocessing.household_consumption_kw * 1000
+                )  # Convert to W
+                logger.info(
+                    f"Using configured household_consumption: {household_consumption:.0f} W"
+                )
                 df["pv_surplus"] = df[pv_col] - household_consumption
                 df["label"] = (df["pv_surplus"] > threshold).astype(int)
 
@@ -410,12 +436,9 @@ class DataPreprocessor:
             X, y, train_size=split_ratio, random_state=random_seed, stratify=y, shuffle=True
         )
 
+        logger.info(f"Train set: {len(X_train)} samples, Test set: {len(X_test)} samples")
         logger.info(
-            f"Train set: {len(X_train)} samples, Test set: {len(X_test)} samples"
-        )
-        logger.info(
-            f"Train positive ratio: {y_train.mean():.2%}, "
-            f"Test positive ratio: {y_test.mean():.2%}"
+            f"Train positive ratio: {y_train.mean():.2%}, Test positive ratio: {y_test.mean():.2%}"
         )
 
         return X_train, X_test, y_train, y_test
