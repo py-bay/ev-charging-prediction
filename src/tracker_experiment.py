@@ -67,7 +67,7 @@ class TrackerForecastExperiment:
 
     def __init__(self):
         # Hardcoded experiment parameters
-        self.lookback = 96  # 24 hours at 15-min resolution
+        self.lookback = 48  # 24 hours at 15-min resolution
         self.horizon = 24   # 6 hours ahead
         self.test_fraction = 0.2
         self.seed = 42
