@@ -518,14 +518,18 @@ class TrackerForecastExperiment:
         logger.info("=" * 80)
 
         # Inverse transform predictions and targets
-        # We need to create dummy arrays with all features to use the scaler
-        n_features = len(self.feature_cols) + 3  # features + 3 targets
+        # The scaler was fit on the entire dataframe with all columns
+        # Get the column order from the original dataframe
+        all_cols = list(self.df.columns)
+        n_features = len(all_cols)
 
-        # Get indices of target columns in the original scaler
-        all_cols = self.feature_cols + ["pv_total", "pv_north", "pv_south"]
+        # Get indices of target columns
         idx_total = all_cols.index("pv_total")
         idx_north = all_cols.index("pv_north")
         idx_south = all_cols.index("pv_south")
+
+        logger.info(f"Scaler expects {n_features} features, column order: {all_cols}")
+        logger.info(f"Target indices - total: {idx_total}, north: {idx_north}, south: {idx_south}")
 
         # Inverse transform y_test_total
         dummy = np.zeros((len(self.y_test_total), n_features))
