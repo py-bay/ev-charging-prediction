@@ -73,11 +73,11 @@ class TrackerForecastExperiment:
         self.seed = 42
 
         # LSTM hyperparameters
-        self.hidden_size = 64
+        self.hidden_size = 32
         self.num_layers = 2
         self.dropout = 0.2
         self.learning_rate = 0.001
-        self.epochs = 50
+        self.epochs = 20
         self.batch_size = 64
 
         # Paths
@@ -280,11 +280,22 @@ class TrackerForecastExperiment:
         logger.info(f"Final merged data: {df.shape}")
         logger.info(f"Columns: {list(df.columns)}")
 
-        # Define feature columns (everything except targets)
+        # Define feature columns (only important features)
         target_cols = ["pv_total", "pv_north", "pv_south"]
-        self.feature_cols = [col for col in df.columns if col not in target_cols]
+        important_features = [
+            'ghi', 'dni', 'dhi', 'temperature_2m', 'cloud_cover',
+            'hour_sin', 'hour_cos', 'day_sin', 'day_cos'
+        ]
+
+        # Filter to only include features that exist in the dataframe
+        self.feature_cols = [col for col in important_features if col in df.columns]
 
         logger.info(f"Feature columns ({len(self.feature_cols)}): {self.feature_cols}")
+
+        # Warn if any important features are missing
+        missing_features = set(important_features) - set(self.feature_cols)
+        if missing_features:
+            logger.warning(f"Missing features from dataframe: {missing_features}")
 
         # Apply 6-hour forecast shift (shift features back 24 steps)
         logger.info(f"Applying 6-hour forecast shift (horizon={self.horizon} steps)...")
