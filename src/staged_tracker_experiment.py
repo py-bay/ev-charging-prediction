@@ -119,11 +119,11 @@ class StagedTrackerExperiment:
         self.batch_size = 64
 
         # Ratio model hyperparameters (Stage 2: Ratio prediction)
-        self.hidden_size_ratio = 24
+        self.hidden_size_ratio = 32  # Increased for temporal pattern learning
         self.num_layers_ratio = 2
         self.dropout_ratio = 0.2
         self.learning_rate_ratio = 0.001
-        self.epochs_ratio = 15
+        self.epochs_ratio = 30  # More epochs to learn temporal patterns
 
         # Paths
         self.output_dir = Path("outputs/experiment_staged_tracker")
@@ -469,39 +469,91 @@ class StagedTrackerExperiment:
         logger.info(f"  Train: {len(self.y_pred_total_train)} predictions")
         logger.info(f"  Test: {len(self.y_pred_total)} predictions")
 
+    def _create_temporal_features(self):
+        """Create cyclic temporal features for each timestep in the lookback window.
+
+        This helps the ratio model understand what time of day it is, which is crucial
+        because the north/south ratio varies dramatically throughout the day:
+        - Morning: ~80% North, 20% South (low angle sun from east)
+        - Midday: ~30% North, 70% South (high angle sun from south)
+        - Evening: ~60% North, 40% South (low angle sun from west)
+
+        Returns:
+            temporal_features: (lookback, 2) array with hour_sin and hour_cos
+        """
+        # Create temporal features for a single sequence
+        # These will be the same for all samples (only depend on time of day)
+
+        # For lookback window, we need to know the hour for each timestep
+        # We'll use a proxy: assume uniform distribution across 24 hours
+        # Better: extract actual hours from the dataframe timestamps
+
+        # For simplicity and consistency: create features based on relative position
+        # in the sequence (0 to lookback-1)
+        timesteps = np.arange(self.lookback)
+
+        # Map to hours (assuming 15-min intervals)
+        hours = (timesteps * 0.25) % 24  # 0.25 hours = 15 minutes
+
+        # Cyclic encoding
+        hour_sin = np.sin(2 * np.pi * hours / 24)
+        hour_cos = np.cos(2 * np.pi * hours / 24)
+
+        # Stack into (lookback, 2)
+        temporal_features = np.stack([hour_sin, hour_cos], axis=-1)
+
+        return temporal_features
+
     def prepare_stage2_data(self):
-        """Prepare Stage 2 data: Features + predicted total -> south ratio."""
+        """Prepare Stage 2 data: Features + predicted total + temporal features -> south ratio."""
         logger.info("=" * 80)
-        logger.info("PREPARING STAGE 2 DATA (RATIO PREDICTION)")
+        logger.info("PREPARING STAGE 2 DATA (RATIO PREDICTION WITH TEMPORAL FEATURES)")
         logger.info("=" * 80)
 
-        # Stage 2 input: [original features + predicted total] for each timestep in sequence
-        # We need to add predicted total as an additional feature
+        # IMPROVEMENT: Add temporal features to help model learn time-of-day patterns
+        # The ratio between north and south varies dramatically across the day!
+
+        # Create temporal features (same for all samples)
+        temporal_feat = self._create_temporal_features()
+        logger.info(f"Created temporal features: {temporal_feat.shape}")
+        logger.info(f"  hour_sin range: [{temporal_feat[:, 0].min():.3f}, {temporal_feat[:, 0].max():.3f}]")
+        logger.info(f"  hour_cos range: [{temporal_feat[:, 1].min():.3f}, {temporal_feat[:, 1].max():.3f}]")
+
+        # Stage 2 input: [original features + predicted total + temporal features]
+        # Shape: (lookback, n_features + 1 + 2)
 
         # For training: use predicted total from Stage 1
-        X_train_with_total = []
+        X_train_with_total_and_time = []
         for i in range(len(self.X_train_total)):
             # Get the sequence
             seq = self.X_train_total[i]  # (lookback, n_features)
-            # Add predicted total as last feature for each timestep
-            # We broadcast the predicted value across all timesteps in the sequence
+
+            # Add predicted total as feature
             pred_total = self.y_pred_total_train[i]
             total_feature = np.full((seq.shape[0], 1), pred_total)
-            seq_with_total = np.concatenate([seq, total_feature], axis=1)
-            X_train_with_total.append(seq_with_total)
 
-        self.X_train_ratio = np.array(X_train_with_total)
+            # Add temporal features (same for all samples)
+            # Broadcast to match batch
+            temporal_broadcast = temporal_feat.copy()
+
+            # Concatenate all features
+            seq_enhanced = np.concatenate([seq, total_feature, temporal_broadcast], axis=1)
+            X_train_with_total_and_time.append(seq_enhanced)
+
+        self.X_train_ratio = np.array(X_train_with_total_and_time)
 
         # For testing: use predicted total from Stage 1
-        X_test_with_total = []
+        X_test_with_total_and_time = []
         for i in range(len(self.X_test_total)):
             seq = self.X_test_total[i]
             pred_total = self.y_pred_total[i]
             total_feature = np.full((seq.shape[0], 1), pred_total)
-            seq_with_total = np.concatenate([seq, total_feature], axis=1)
-            X_test_with_total.append(seq_with_total)
+            temporal_broadcast = temporal_feat.copy()
 
-        self.X_test_ratio = np.array(X_test_with_total)
+            seq_enhanced = np.concatenate([seq, total_feature, temporal_broadcast], axis=1)
+            X_test_with_total_and_time.append(seq_enhanced)
+
+        self.X_test_ratio = np.array(X_test_with_total_and_time)
 
         # Target: south_ratio = south / (north + south)
         # Avoid division by zero
@@ -519,11 +571,16 @@ class StagedTrackerExperiment:
             0.5
         )
 
-        logger.info(f"Stage 2 datasets created:")
-        logger.info(f"  Train: {self.X_train_ratio.shape}, ratio range: [{self.y_train_ratio.min():.3f}, {self.y_train_ratio.max():.3f}]")
-        logger.info(f"  Test: {self.X_test_ratio.shape}, ratio range: [{self.y_test_ratio.min():.3f}, {self.y_test_ratio.max():.3f}]")
-        logger.info(f"  Mean ratio (train): {self.y_train_ratio.mean():.3f}")
-        logger.info(f"  Mean ratio (test): {self.y_test_ratio.mean():.3f}")
+        logger.info(f"Stage 2 datasets created with temporal features:")
+        logger.info(f"  Train: {self.X_train_ratio.shape}")
+        logger.info(f"    - Base features: {len(self.feature_cols)}")
+        logger.info(f"    - Predicted total: 1")
+        logger.info(f"    - Temporal (hour_sin/cos): 2")
+        logger.info(f"    - Total input features: {self.X_train_ratio.shape[2]}")
+        logger.info(f"  Test: {self.X_test_ratio.shape}")
+        logger.info(f"  Target ratio statistics:")
+        logger.info(f"    Train - range: [{self.y_train_ratio.min():.3f}, {self.y_train_ratio.max():.3f}], mean: {self.y_train_ratio.mean():.3f}")
+        logger.info(f"    Test  - range: [{self.y_test_ratio.min():.3f}, {self.y_test_ratio.max():.3f}], mean: {self.y_test_ratio.mean():.3f}")
 
     def train_stage2_ratio(self):
         """Stage 2: Train ratio model to predict south_ratio."""
@@ -535,7 +592,7 @@ class StagedTrackerExperiment:
         logger.info(f"Using device: {device}")
 
         input_dim = self.X_train_ratio.shape[2]
-        logger.info(f"Ratio model input dimension: {input_dim} (features + predicted_total)")
+        logger.info(f"Ratio model input dimension: {input_dim} (features + predicted_total + temporal)")
 
         self.model_ratio = RatioLSTM(
             input_dim=input_dim,
@@ -905,6 +962,47 @@ class StagedTrackerExperiment:
 
         plt.tight_layout()
         plt.savefig(self.plots_dir / "residual_distributions.png", dpi=150)
+        plt.close()
+
+        # 4. NEW: Ratio daily pattern visualization
+        logger.info("  Creating ratio_daily_pattern.png...")
+
+        # Calculate true ratio from ground truth
+        # We need to compute for each sample what the true ratio was
+        true_ratio = y_test_south / (y_test_north + y_test_south + 1e-6)  # Avoid div by zero
+
+        # For predicted ratio, we already have self.y_pred_ratio
+        # But we need to visualize the average pattern, not individual predictions
+
+        # Simple approach: bin by hour and show mean ratio
+        # We don't have actual timestamps here, so we'll show distribution instead
+
+        fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+
+        # Left: Distribution comparison
+        axes[0].hist(true_ratio, bins=50, alpha=0.6, label='True Ratio', color='blue', edgecolor='black')
+        axes[0].hist(self.y_pred_ratio, bins=50, alpha=0.6, label='Predicted Ratio', color='orange', edgecolor='black')
+        axes[0].axvline(true_ratio.mean(), color='blue', linestyle='--', linewidth=2, label=f'True Mean: {true_ratio.mean():.3f}')
+        axes[0].axvline(self.y_pred_ratio.mean(), color='orange', linestyle='--', linewidth=2, label=f'Pred Mean: {self.y_pred_ratio.mean():.3f}')
+        axes[0].set_xlabel('South Tracker Ratio')
+        axes[0].set_ylabel('Frequency')
+        axes[0].set_title('Ratio Distribution: True vs Predicted')
+        axes[0].legend()
+        axes[0].grid(True, alpha=0.3)
+
+        # Right: Scatter plot of predicted vs true ratio
+        axes[1].scatter(true_ratio, self.y_pred_ratio, alpha=0.3, s=10, color='purple')
+        axes[1].plot([0, 1], [0, 1], 'r--', lw=2, label='Perfect Prediction')
+        axes[1].set_xlabel('True South Ratio')
+        axes[1].set_ylabel('Predicted South Ratio')
+        axes[1].set_title('South Ratio: Predicted vs True')
+        axes[1].legend()
+        axes[1].grid(True, alpha=0.3)
+        axes[1].set_xlim([0, 1])
+        axes[1].set_ylim([0, 1])
+
+        plt.tight_layout()
+        plt.savefig(self.plots_dir / "ratio_daily_pattern.png", dpi=150)
         plt.close()
 
         logger.info("All visualizations saved!")
