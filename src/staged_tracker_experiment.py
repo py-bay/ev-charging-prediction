@@ -559,14 +559,18 @@ class StagedTrackerExperiment:
         logger.info("\nGenerating final tracker predictions...")
         self.y_pred_ratio = self._predict(self.model_ratio, self.X_test_ratio, device)
 
-        # Calculate tracker predictions: south = total * ratio, north = total * (1 - ratio)
-        self.y_pred_south = self.y_pred_total * self.y_pred_ratio
-        self.y_pred_north = self.y_pred_total * (1 - self.y_pred_ratio)
+        # CRITICAL: Verify sigmoid constraint
+        logger.info(f"Stage 2 ratio prediction verification:")
+        logger.info(f"  Ratio range: [{self.y_pred_ratio.min():.6f}, {self.y_pred_ratio.max():.6f}]")
+        logger.info(f"  Mean ratio: {self.y_pred_ratio.mean():.3f}")
 
-        logger.info(f"Stage 2 complete:")
-        logger.info(f"  Predicted ratio range: [{self.y_pred_ratio.min():.3f}, {self.y_pred_ratio.max():.3f}]")
-        logger.info(f"  Mean predicted ratio: {self.y_pred_ratio.mean():.3f}")
-        logger.info(f"  Sum verification: north + south = {(self.y_pred_north + self.y_pred_south - self.y_pred_total).mean():.6f} (should be ~0)")
+        # Check sigmoid output is within [0, 1]
+        if self.y_pred_ratio.min() < 0 or self.y_pred_ratio.max() > 1:
+            logger.error(f"ERROR: Ratio outside [0,1] range! Min: {self.y_pred_ratio.min()}, Max: {self.y_pred_ratio.max()}")
+
+        # Store ratio for later use (we'll calculate north/south AFTER denormalization)
+        # DO NOT calculate in normalized space - that breaks the constraint!
+        logger.info("✓ Ratio predictions stored (will calculate tracker predictions after denormalization)")
 
     def _train_model(self, model: nn.Module, X_train: np.ndarray, y_train: np.ndarray,
                      device, learning_rate: float, epochs: int, model_name: str):
@@ -640,7 +644,7 @@ class StagedTrackerExperiment:
 
         logger.info(f"Inverse transforming predictions (scaler expects {n_features} features)...")
 
-        # Inverse transform total
+        # Inverse transform total (Stage 1 prediction)
         dummy = np.zeros((len(self.y_test_total), n_features))
         dummy[:, idx_total] = self.y_test_total
         y_test_total_inv = self.scaler.inverse_transform(dummy)[:, idx_total]
@@ -649,26 +653,36 @@ class StagedTrackerExperiment:
         dummy[:, idx_total] = self.y_pred_total
         y_pred_total_inv = self.scaler.inverse_transform(dummy)[:, idx_total]
 
-        # Inverse transform north
+        # Inverse transform ground truth trackers
         dummy = np.zeros((len(self.y_test_north), n_features))
         dummy[:, idx_north] = self.y_test_north
         y_test_north_inv = self.scaler.inverse_transform(dummy)[:, idx_north]
 
-        dummy = np.zeros((len(self.y_pred_north), n_features))
-        dummy[:, idx_north] = self.y_pred_north
-        y_pred_north_inv = self.scaler.inverse_transform(dummy)[:, idx_north]
-
-        # Inverse transform south
         dummy = np.zeros((len(self.y_test_south), n_features))
         dummy[:, idx_south] = self.y_test_south
         y_test_south_inv = self.scaler.inverse_transform(dummy)[:, idx_south]
 
-        dummy = np.zeros((len(self.y_pred_south), n_features))
-        dummy[:, idx_south] = self.y_pred_south
-        y_pred_south_inv = self.scaler.inverse_transform(dummy)[:, idx_south]
+        # CRITICAL FIX: Calculate tracker predictions in DENORMALIZED space
+        # This ensures mathematical constraint: north + south = total (exactly!)
+        logger.info("\n🔧 CRITICAL: Calculating tracker predictions in denormalized space...")
+        y_pred_south_inv = y_pred_total_inv * self.y_pred_ratio
+        y_pred_north_inv = y_pred_total_inv * (1 - self.y_pred_ratio)
 
-        # Compute summed prediction (should equal y_pred_total_inv)
+        # Verify constraint
         y_pred_sum_inv = y_pred_north_inv + y_pred_south_inv
+        constraint_error_mean = np.abs(y_pred_sum_inv - y_pred_total_inv).mean()
+        constraint_error_max = np.abs(y_pred_sum_inv - y_pred_total_inv).max()
+
+        logger.info(f"✓ Constraint verification:")
+        logger.info(f"  Mean absolute error: {constraint_error_mean:.9f} W")
+        logger.info(f"  Max absolute error: {constraint_error_max:.9f} W")
+        logger.info(f"  Ratio range: [{self.y_pred_ratio.min():.6f}, {self.y_pred_ratio.max():.6f}]")
+
+        # Assert constraint (should be near zero due to floating point precision)
+        if constraint_error_mean > 1e-6:
+            logger.warning(f"⚠️ Constraint error larger than expected: {constraint_error_mean}")
+        else:
+            logger.info(f"✅ Constraint satisfied (error < 1e-6)")
 
         # Compute metrics
         logger.info("\nComputing metrics...")
@@ -702,9 +716,23 @@ class StagedTrackerExperiment:
         for key, value in metrics_sum.items():
             logger.info(f"  {key}: {value:.6f}")
 
-        # Verify sum constraint
-        sum_diff = np.abs(y_pred_sum_inv - y_pred_total_inv).mean()
-        logger.info(f"\n✓ Sum constraint verification: {sum_diff:.6f} W average difference (should be ~0)")
+        # Comprehensive constraint verification
+        logger.info("\n" + "=" * 40)
+        logger.info("CONSTRAINT VERIFICATION:")
+        logger.info("=" * 40)
+        logger.info(f"Mean absolute error: {constraint_error_mean:.9f} W")
+        logger.info(f"Max absolute error: {constraint_error_max:.9f} W")
+        logger.info(f"Ratio range: [{self.y_pred_ratio.min():.6f}, {self.y_pred_ratio.max():.6f}]")
+        logger.info(f"Mean ratio: {self.y_pred_ratio.mean():.6f}")
+
+        constraint_satisfied = constraint_error_mean < 1e-6 and \
+                               self.y_pred_ratio.min() >= 0 and \
+                               self.y_pred_ratio.max() <= 1
+
+        if constraint_satisfied:
+            logger.info("✅ ALL CONSTRAINTS SATISFIED!")
+        else:
+            logger.warning("⚠️ CONSTRAINT VIOLATION DETECTED!")
 
         # Save results
         results = {
@@ -731,7 +759,14 @@ class StagedTrackerExperiment:
             "stage2_north": metrics_north,
             "stage2_south": metrics_south,
             "sum_verification": metrics_sum,
-            "sum_constraint_diff_w": float(sum_diff)
+            "constraint_verification": {
+                "mean_absolute_error": float(constraint_error_mean),
+                "max_absolute_error": float(constraint_error_max),
+                "ratio_min": float(self.y_pred_ratio.min()),
+                "ratio_max": float(self.y_pred_ratio.max()),
+                "ratio_mean": float(self.y_pred_ratio.mean()),
+                "constraint_satisfied": bool(constraint_satisfied)
+            }
         }
 
         # Save JSON
