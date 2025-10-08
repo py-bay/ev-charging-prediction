@@ -556,43 +556,103 @@ class StagedTrackerExperiment:
         self.X_test_ratio = np.array(X_test_with_total_and_time)
 
         # Target: south_ratio = south / (north + south)
-        # Avoid division by zero
+        # CRITICAL: Only calculate ratios for daylight hours to avoid NaN and 0.5 defaults
         train_total_actual = self.y_train_north + self.y_train_south
         test_total_actual = self.y_test_north + self.y_test_south
 
-        self.y_train_ratio = np.where(
+        # Define daylight threshold (samples with meaningful production)
+        DAYLIGHT_THRESHOLD = 50.0  # Watt (scaled values, so this is relative to MinMax range)
+
+        # Create daylight masks
+        # We're in normalized space, so threshold is also in [0, 1] range
+        # A better approach: use absolute threshold BEFORE normalization
+        # But we can approximate: total > 0.01 in normalized space ≈ meaningful production
+        daylight_mask_train = train_total_actual > 0.01  # ~50W in original space
+        daylight_mask_test = test_total_actual > 0.01
+
+        logger.info(f"\n🌞 DAYLIGHT FILTERING:")
+        logger.info(f"  Threshold: >0.01 (normalized, ≈50W in original space)")
+        logger.info(f"  Train: {daylight_mask_train.sum()}/{len(daylight_mask_train)} samples "
+                   f"({daylight_mask_train.mean()*100:.1f}% daylight)")
+        logger.info(f"  Test:  {daylight_mask_test.sum()}/{len(daylight_mask_test)} samples "
+                   f"({daylight_mask_test.mean()*100:.1f}% daylight)")
+
+        # Calculate ratios (will still have some issues, but we'll filter below)
+        self.y_train_ratio_unfiltered = np.where(
             train_total_actual > 1e-6,
             self.y_train_south / train_total_actual,
-            0.5  # Default to 50/50 when total is zero
+            0.5  # Fallback (will be filtered out anyway)
         )
-        self.y_test_ratio = np.where(
+        self.y_test_ratio_unfiltered = np.where(
             test_total_actual > 1e-6,
             self.y_test_south / test_total_actual,
             0.5
         )
 
-        logger.info(f"Stage 2 datasets created with temporal features:")
-        logger.info(f"  Train: {self.X_train_ratio.shape}")
+        # Check for NaN values BEFORE filtering
+        nan_count_train_before = np.isnan(self.y_train_ratio_unfiltered).sum()
+        nan_count_test_before = np.isnan(self.y_test_ratio_unfiltered).sum()
+        logger.info(f"  NaN values before filtering: Train={nan_count_train_before}, Test={nan_count_test_before}")
+
+        # CRITICAL FIX: Store daylight masks and filter training data
+        self.daylight_mask_train = daylight_mask_train
+        self.daylight_mask_test = daylight_mask_test
+
+        # Filter to daylight only for training
+        self.X_train_ratio_daylight = self.X_train_ratio[daylight_mask_train]
+        self.y_train_ratio = self.y_train_ratio_unfiltered[daylight_mask_train]
+
+        # For testing, keep ALL samples (we'll predict for all, but evaluate separately)
+        self.X_test_ratio_all = self.X_test_ratio.copy()
+        self.y_test_ratio_all = self.y_test_ratio_unfiltered.copy()
+
+        # Also keep daylight-only test set for evaluation
+        self.X_test_ratio = self.X_test_ratio[daylight_mask_test]
+        self.y_test_ratio = self.y_test_ratio_unfiltered[daylight_mask_test]
+
+        # Verify no NaN in daylight-filtered data
+        nan_count_train_after = np.isnan(self.y_train_ratio).sum()
+        nan_count_test_after = np.isnan(self.y_test_ratio).sum()
+        logger.info(f"  NaN values after filtering: Train={nan_count_train_after}, Test={nan_count_test_after}")
+
+        if nan_count_train_after > 0 or nan_count_test_after > 0:
+            logger.error(f"❌ Still have NaN values after filtering! This should not happen.")
+
+        # Expected ratio based on data statistics
+        expected_south_ratio = self.y_train_south[daylight_mask_train].sum() / train_total_actual[daylight_mask_train].sum()
+        logger.info(f"\n📊 EXPECTED RATIO (from data):")
+        logger.info(f"  South ratio: {expected_south_ratio:.3f}")
+        logger.info(f"  North ratio: {1 - expected_south_ratio:.3f}")
+
+        logger.info(f"\nStage 2 datasets created with temporal features (DAYLIGHT ONLY):")
+        logger.info(f"  Train: {self.X_train_ratio_daylight.shape}")
         logger.info(f"    - Base features: {len(self.feature_cols)}")
         logger.info(f"    - Predicted total: 1")
         logger.info(f"    - Temporal (hour_sin/cos): 2")
-        logger.info(f"    - Total input features: {self.X_train_ratio.shape[2]}")
-        logger.info(f"  Test: {self.X_test_ratio.shape}")
-        logger.info(f"  Target ratio statistics:")
+        logger.info(f"    - Total input features: {self.X_train_ratio_daylight.shape[2]}")
+        logger.info(f"  Test (daylight): {self.X_test_ratio.shape}")
+        logger.info(f"  Test (all):      {self.X_test_ratio_all.shape}")
+        logger.info(f"  Target ratio statistics (DAYLIGHT ONLY):")
         logger.info(f"    Train - range: [{self.y_train_ratio.min():.3f}, {self.y_train_ratio.max():.3f}], mean: {self.y_train_ratio.mean():.3f}")
         logger.info(f"    Test  - range: [{self.y_test_ratio.min():.3f}, {self.y_test_ratio.max():.3f}], mean: {self.y_test_ratio.mean():.3f}")
+        logger.info(f"    Expected mean: {expected_south_ratio:.3f}")
+
+        # Store expected ratio for later comparison
+        self.expected_south_ratio = expected_south_ratio
 
     def train_stage2_ratio(self):
-        """Stage 2: Train ratio model to predict south_ratio."""
+        """Stage 2: Train ratio model to predict south_ratio (DAYLIGHT ONLY)."""
         logger.info("=" * 80)
-        logger.info("STAGE 2: TRAINING RATIO PREDICTION MODEL")
+        logger.info("STAGE 2: TRAINING RATIO PREDICTION MODEL (DAYLIGHT ONLY)")
         logger.info("=" * 80)
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logger.info(f"Using device: {device}")
 
-        input_dim = self.X_train_ratio.shape[2]
+        input_dim = self.X_train_ratio_daylight.shape[2]
         logger.info(f"Ratio model input dimension: {input_dim} (features + predicted_total + temporal)")
+        logger.info(f"Training on DAYLIGHT samples only: {len(self.X_train_ratio_daylight)} samples")
+        logger.info(f"  (excluded {len(self.X_train_ratio) - len(self.X_train_ratio_daylight)} night samples)")
 
         self.model_ratio = RatioLSTM(
             input_dim=input_dim,
@@ -602,28 +662,50 @@ class StagedTrackerExperiment:
         ).to(device)
 
         # Train the model with MSE loss (ratio is continuous 0-1)
+        # CRITICAL: Train ONLY on daylight samples to avoid NaN/0.5 regression
         self._train_model(
             self.model_ratio,
-            self.X_train_ratio,
-            self.y_train_ratio,
+            self.X_train_ratio_daylight,  # ← CHANGED: only daylight
+            self.y_train_ratio,            # ← Already filtered in prepare_stage2_data
             device,
             self.learning_rate_ratio,
             self.epochs_ratio,
-            "Stage 2: Ratio"
+            "Stage 2: Ratio (Daylight)"
         )
 
-        # Generate predictions
+        # Generate predictions for ALL test samples (including night)
+        # The model was trained only on daylight, but can predict for all
         logger.info("\nGenerating final tracker predictions...")
+        logger.info("  Predicting for ALL test samples (including night hours)...")
+        self.y_pred_ratio_all = self._predict(self.model_ratio, self.X_test_ratio_all, device)
+
+        # Also predict for daylight-only (for comparison)
         self.y_pred_ratio = self._predict(self.model_ratio, self.X_test_ratio, device)
 
-        # CRITICAL: Verify sigmoid constraint
-        logger.info(f"Stage 2 ratio prediction verification:")
-        logger.info(f"  Ratio range: [{self.y_pred_ratio.min():.6f}, {self.y_pred_ratio.max():.6f}]")
-        logger.info(f"  Mean ratio: {self.y_pred_ratio.mean():.3f}")
+        # CRITICAL: Verify sigmoid constraint and ratio learning
+        logger.info(f"\n📊 RATIO PREDICTION VERIFICATION:")
+        logger.info(f"  All samples:")
+        logger.info(f"    Range: [{self.y_pred_ratio_all.min():.6f}, {self.y_pred_ratio_all.max():.6f}]")
+        logger.info(f"    Mean:  {self.y_pred_ratio_all.mean():.3f}")
+        logger.info(f"  Daylight only:")
+        logger.info(f"    Range: [{self.y_pred_ratio.min():.6f}, {self.y_pred_ratio.max():.6f}]")
+        logger.info(f"    Mean:  {self.y_pred_ratio.mean():.3f}")
+        logger.info(f"  Expected (from data): {self.expected_south_ratio:.3f}")
+
+        # Calculate ratio error
+        ratio_error_all = abs(self.y_pred_ratio_all.mean() - self.expected_south_ratio)
+        ratio_error_day = abs(self.y_pred_ratio.mean() - self.expected_south_ratio)
+        logger.info(f"  Prediction error (all):      {ratio_error_all:.3f} ({ratio_error_all/self.expected_south_ratio*100:.1f}%)")
+        logger.info(f"  Prediction error (daylight): {ratio_error_day:.3f} ({ratio_error_day/self.expected_south_ratio*100:.1f}%)")
 
         # Check sigmoid output is within [0, 1]
-        if self.y_pred_ratio.min() < 0 or self.y_pred_ratio.max() > 1:
-            logger.error(f"ERROR: Ratio outside [0,1] range! Min: {self.y_pred_ratio.min()}, Max: {self.y_pred_ratio.max()}")
+        if self.y_pred_ratio_all.min() < 0 or self.y_pred_ratio_all.max() > 1:
+            logger.error(f"❌ ERROR: Ratio outside [0,1] range! Min: {self.y_pred_ratio_all.min()}, Max: {self.y_pred_ratio_all.max()}")
+        else:
+            logger.info(f"✅ Sigmoid constraint satisfied (ratio in [0,1])")
+
+        # Use the ALL predictions for final calculation (including night)
+        self.y_pred_ratio = self.y_pred_ratio_all
 
         # Store ratio for later use (we'll calculate north/south AFTER denormalization)
         # DO NOT calculate in normalized space - that breaks the constraint!
