@@ -843,7 +843,7 @@ PV production?
 
 The separate per-tracker modeling {'**yielded {:.2f}% lower MAE**'.format(abs(mae_improvement)) if mae_improvement > 0 else '**yielded {:.2f}% higher MAE**'.format(abs(mae_improvement))} compared to the total model.
 
-{'**Statistical significance**: The difference is statistically significant at α=0.05.' if stats['paired_t_test_pvalue'] < 0.05 else '**Not statistically significant**: The difference is not significant at α=0.05.'}
+{'**Statistical significance**: The difference is statistically significant at alpha=0.05.' if stats['paired_t_test_pvalue'] < 0.05 else '**Not statistically significant**: The difference is not significant at alpha=0.05.'}
 
 ## Visualizations
 
@@ -858,7 +858,7 @@ This experiment provides {'strong' if stats['paired_t_test_pvalue'] < 0.05 and m
 """
 
         summary_path = self.output_dir / "summary.md"
-        with open(summary_path, "w") as f:
+        with open(summary_path, "w", encoding="utf-8") as f:
             f.write(summary)
 
         logger.info(f"Saved summary to {summary_path}")
