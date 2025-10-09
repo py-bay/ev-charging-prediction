@@ -1,30 +1,29 @@
-# Solar Tracker Forecast
+# PV Tracker Prediction
 
-Comparison of baseline vs tracker-specific solar PV forecasting models.
+Deep learning-based solar PV production forecasting using LSTM models with separate tracker-level predictions.
 
 ## Overview
 
-This project compares two forecasting approaches for solar PV power prediction:
+This project implements a complete machine learning pipeline for solar PV power prediction using LSTM neural networks. The approach trains separate models for each solar tracker to capture orientation-specific characteristics.
 
-1. **Baseline Models**: Simple models using only Global Horizontal Irradiance (GHI) to predict total PV power
-   - Linear Regression: GHI → Total PV
-   - Random Forest: GHI → Total PV
+### Model Architecture
 
-2. **Advanced Tracker-Specific Models**: Separate Random Forest models for each tracker using multiple features
-   - Tracker 1 (South-facing): [GHI, DNI, DHI, Weather features] → Tracker 1 PV
-   - Tracker 2 (North-facing): [GHI, DNI, DHI, Weather features] → Tracker 2 PV
-   - Total forecast: Sum of Tracker 1 + Tracker 2 predictions
-
-**Hypothesis**: Tracker-level forecasting with multiple features should achieve higher accuracy than baseline models.
+**LSTM-based Time Series Forecasting**
+- **Architecture**: Multi-layer LSTM (2 layers, 64 hidden units) with dropout regularization (0.2)
+- **Input**: Sequential data with 12-timestep lookback window (3 hours at 15-minute intervals)
+- **Features**: Weather data, irradiance components (GHI, DNI, DHI), and temporal features (hour, day of year with sin/cos encoding)
+- **Output**: Single-step forecast of PV production (Watts)
+- **3 Separate Models**: Total production, North tracker, South tracker
 
 ### Key Features
 
-- **6-Hour Forecast Horizon**: Uses actual measured weather data (no forecast data required)
-- **Correlation-Based Feature Selection**: Automatically selects most relevant features per tracker
+- **Complete ML Pipeline**: Preprocessing → Processing → Training → Prediction → Evaluation
+- **Independent Pipeline Steps**: Each step can be run separately or as part of complete workflow
 - **Multiple Irradiance Components**: GHI (Global), DNI (Direct Normal), DHI (Diffuse Horizontal)
 - **Weather Features**: Temperature, humidity, cloud cover, wind speed, pressure, etc.
-- **Comprehensive Metrics**: RMSE, MAE, R², MAPE, normalized RMSE, bias error
-- **Publication-Ready Visualizations**: Predictions vs actual, residuals, time series, error distributions
+- **Temporal Features**: Hour, day of year with cyclical encoding (sin/cos)
+- **Comprehensive Metrics**: MAE, RMSE, R², MAPE, Max Error
+- **Publication-Ready Visualizations**: 5 plot types per dataset in German (300 DPI PNG)
 
 ## Installation
 
@@ -32,208 +31,273 @@ Check out [INSTALLATION.md](./INSTALLATION.md) for installation instructions.
 
 ## Usage
 
-### Quick Start - Train All Models
+### Complete Pipeline
 
-Train and evaluate both baseline and tracker-specific models:
-
-```bash
-uv run python -m src.solar_tracker_forecast train-all
-```
-
-### Individual Commands
-
-#### 1. Preprocess Data
+Run the entire pipeline from data preprocessing to evaluation:
 
 ```bash
-uv run python -m src.solar_tracker_forecast preprocess
+python main.py
 ```
 
-This will:
-- Load PV data (with tracker information)
-- Load irradiance data (GHI, DNI, DHI)
-- Load weather data and resample to 15-minute intervals
-- Apply 6-hour forecast shift
-- Merge all data sources
+### Individual Pipeline Steps
 
-#### 2. Train Baseline Models
+Each step can be run independently:
+
+#### 1. Preprocessing
+Load and merge raw data (PV, irradiance, weather):
 
 ```bash
-uv run python -m src.solar_tracker_forecast train-baseline
+python main.py --step preprocessing
 ```
 
-Trains both:
-- Linear Regression (GHI → Total PV)
-- Random Forest (GHI → Total PV)
+**Input**: Raw CSV files in `data/`
+**Output**: Preprocessed data in `data/preprocessed/`
 
-Outputs:
-- Model files: `outputs/models/baseline_*.pkl`
-- Metrics: `outputs/results/baseline_*_metrics.json`
-- Plots: `outputs/plots/baseline_*.png`
-
-#### 3. Train Tracker-Specific Models
+#### 2. Processing
+Add temporal features, split train/test, and scale:
 
 ```bash
-uv run python -m src.solar_tracker_forecast train-tracker \
-  --corr-threshold 0.3 \
-  --top-n 15
+python main.py --step processing
 ```
 
-**Options:**
-- `--corr-threshold, -t`: Minimum correlation for feature selection [default: 0.3]
-- `--top-n, -n`: Maximum number of features to select [default: 15]
+**Input**: Preprocessed data from step 1
+**Output**: Train/test splits in `data/processed/`
 
-Trains:
-- Tracker 1 (South) Random Forest model
-- Tracker 2 (North) Random Forest model
-- Evaluates combined forecast (T1 + T2)
+#### 3. Training
+Train LSTM models for all three datasets:
 
-Outputs:
-- Model files: `outputs/models/tracker{1,2}_*.pkl`
-- Metrics: `outputs/results/tracker*_metrics.json`
-- Plots: `outputs/plots/tracker*.png`
+```bash
+python main.py --step training
+```
+
+**Input**: Train/test data from step 2
+**Output**: Trained models in `outputs/models/`
+
+**Training Configuration** (in `config.yaml`):
+- Epochs: 50 (with early stopping, patience=10)
+- Batch size: 32
+- Learning rate: 0.001
+- Optimizer: Adam
+- Loss function: MSE
+
+#### 4. Prediction
+Generate predictions on test data:
+
+```bash
+python main.py --step prediction
+```
+
+**Input**: Trained models + test data
+**Output**: Predictions CSV in `outputs/predictions/`
+
+#### 5. Evaluation
+Calculate metrics and generate visualizations:
+
+```bash
+python main.py --step evaluation
+```
+
+**Input**: Predictions from step 4
+**Output**: Metrics and plots in `outputs/results/`
+
+### Running Multiple Steps
+
+Run from a specific step onwards using `--continue`:
+
+```bash
+# Run prediction and evaluation
+python main.py --step prediction --continue
+
+# Run training, prediction, and evaluation
+python main.py --step training --continue
+```
 
 ## Data Requirements
 
 Place CSV files in the `data/` directory:
 
 ### 1. pv_data.csv
-PV production data (15-minute intervals, semicolon-separated, German column names):
-- **Columns**: Timestamp, Solarproduktion (total), Tracker 1, Tracker 2, Tracker 3
-- **Note**: Tracker 3 is ignored (always 0)
+PV production data (15-minute intervals):
+- **Columns**: Timestamp, Solarproduktion (total), Solarproduktion Tracker 1 (North), Solarproduktion Tracker 2 (South)
+- **Units**: Watts
 
-### 2. solar_irradiance.csv
+### 2. irradiance.csv
 Solar irradiance data (15-minute intervals):
-- **Columns**: dt_iso, ghi_cloudy_sky, dni_cloudy_sky, dhi_cloudy_sky
-- **GHI**: Global Horizontal Irradiance
-- **DNI**: Direct Normal Irradiance
-- **DHI**: Diffuse Horizontal Irradiance
+- **Columns**: dt_iso, ghi_cloudy_sky, dni_cloudy_sky, dhi_cloudy_sky, ghi_clear_sky, dni_clear_sky, dhi_clear_sky
+- **GHI**: Global Horizontal Irradiance (W/m²)
+- **DNI**: Direct Normal Irradiance (W/m²)
+- **DHI**: Diffuse Horizontal Irradiance (W/m²)
+- **Cloudy/Clear Sky**: Different atmospheric conditions
 
 ### 3. weather.csv
 Hourly weather data from Open-Meteo (automatically resampled to 15-min):
 - **Columns**: time, temperature_2m, relative_humidity_2m, precipitation, cloud_cover, wind_speed_10m, wind_gusts_10m, pressure_msl, weather_code, cloud_cover_low, cloud_cover_mid, cloud_cover_high
+- **Note**: Automatically resampled from hourly to 15-minute intervals
 
-## Forecasting Methodology
+## Methodology
 
-### 6-Hour Forecast Logic
+### Training Strategy
 
-The models predict PV power 6 hours ahead using historical weather and irradiance data:
-
-1. Features (weather, irradiance) are shifted back 6 hours
-2. Target (PV power) remains at current timestamp
-3. This creates a 6-hour forecast scenario using actual measured data
-4. No forecast data required - relies on measurement lag
-
-### Feature Selection
-
-For tracker-specific models:
-1. Compute correlation matrix between all features and tracker power
-2. Select features with |correlation| > threshold
-3. Limit to top N features by absolute correlation
-4. Train separate models per tracker with their selected features
-
-### Train/Test Split
-
+**Data Split**:
 - 80% training, 20% testing
-- Random shuffle (not chronological)
-- Same random seed (42) for reproducibility
-- All models use identical splits for fair comparison
+- Time-based split (no shuffle)
+- Scaled using StandardScaler per feature
 
-## Evaluation Metrics
+**Model Training**:
+- Optimizer: Adam (learning rate: 0.001)
+- Loss function: MSE (Mean Squared Error)
+- Batch size: 32
+- Max epochs: 50
+- Early stopping: Patience of 10 epochs
+- Device: Automatic GPU usage if available (CUDA)
 
-All models are evaluated using regression metrics:
+**Sequence Creation**:
+- Lookback window: 12 timesteps (3 hours)
+- Target: Next timestep (single-step forecast)
+- All features scaled before sequence creation
 
-- **RMSE** (Root Mean Squared Error): Overall prediction error magnitude
-- **MAE** (Mean Absolute Error): Average absolute prediction error
-- **R²** (Coefficient of Determination): Proportion of variance explained
+### Feature Engineering
+
+**Temporal Features**:
+- Hour of day
+- Day of year
+- Month
+- Cyclical encoding: sin/cos transformations for hour and day of year
+
+**Weather & Irradiance Features**:
+- All irradiance components (GHI, DNI, DHI for cloudy/clear sky)
+- All weather features (temperature, humidity, cloud cover, wind, pressure, etc.)
+- No feature selection - model learns feature importance
+
+## Evaluation
+
+### Metrics
+
+All models are evaluated using the following metrics:
+
+- **MAE** (Mean Absolute Error): Average absolute prediction error in Watts
+- **RMSE** (Root Mean Squared Error): Overall prediction error magnitude in Watts
+- **R²** (Coefficient of Determination): Proportion of variance explained (0-1)
 - **MAPE** (Mean Absolute Percentage Error): Percentage error relative to actual values
-- **nRMSE**: Normalized RMSE (as percentage of mean actual value)
-- **MBE** (Mean Bias Error): Systematic over/under-prediction
-- **Max Error**: Largest prediction error
+- **Max Error**: Largest absolute prediction error in Watts
+
+### Visualizations
+
+Five plot types are generated per dataset (total, north, south):
+
+1. **Predicted vs Actual Scatter** (`{dataset}_predicted_vs_actual.png`)
+   - Scatter plot with ideal line (y=x) in red
+   - Linear regression line in blue with R² score
+   - Equal aspect ratio
+
+2. **Time Series Plot** (`{dataset}_timeseries.png`)
+   - Actual vs predicted over random week (672 samples)
+   - Shows temporal prediction patterns
+
+3. **Residual Plot** (`{dataset}_residuals.png`)
+   - Prediction errors over time
+   - Zero line to identify systematic errors
+
+4. **Error Distribution** (`{dataset}_error_distribution.png`)
+   - Histogram of residuals
+   - Tests for normality of errors
+
+5. **Error vs Actual** (`{dataset}_error_vs_actual.png`)
+   - Heteroscedasticity check
+   - Shows if errors depend on production magnitude
+
+**Plot Specifications**:
+- Format: PNG, 300 DPI
+- Language: German labels
+- No captions (for publication use)
+- Saved to `outputs/results/{dataset}/`
 
 ## Project Structure
 
 ```
-solar-tracker-forecast/
+pv-tracker-prediction/
 ├── src/
 │   ├── models/
-│   │   ├── baseline.py              # Linear Regression & RF baseline
-│   │   ├── tracker_models.py        # Tracker-specific Random Forest
-│   │   ├── random_forest.py         # Legacy RF (classification)
-│   │   └── lstm.py                  # Legacy LSTM (classification)
+│   │   ├── lstm_model.py            # LSTM architecture
+│   │   ├── trainer.py               # Training logic with early stopping
+│   │   ├── predictor.py             # Prediction generation
+│   │   └── dataset.py               # PyTorch dataset for sequences
 │   ├── preprocessing/
-│   │   ├── tracker_preprocessing.py # New tracker-specific preprocessing
-│   │   └── pipeline.py              # Legacy preprocessing
+│   │   ├── pipeline.py              # Data loading and merging
+│   │   ├── data_loader.py           # Individual data loaders
+│   │   └── processor.py             # Feature engineering and scaling
 │   ├── evaluation/
-│   │   ├── regression_metrics.py    # RMSE, MAE, R², MAPE
-│   │   ├── regression_visualizer.py # Regression plots
-│   │   ├── metrics_calculator.py    # Legacy (classification)
-│   │   └── visualizer.py            # Legacy (classification)
+│   │   └── evaluator.py             # Metrics and visualization
 │   ├── config/
 │   │   └── models.py                # Pydantic configuration models
-│   ├── logging/
-│   │   └── logging_setup.py         # Structured logging with Loguru
-│   └── solar_tracker_forecast.py    # New CLI
-├── config/
-│   └── config.yaml                  # Configuration file
+│   └── logging/
+│       └── logging_setup.py         # Structured logging with Loguru
+├── main.py                          # Main pipeline orchestrator
+├── config.yaml                      # Configuration file
 ├── data/
 │   ├── pv_data.csv                  # PV production with trackers
-│   ├── solar_irradiance.csv         # GHI, DNI, DHI
-│   └── weather.csv                  # Hourly weather data
+│   ├── irradiance.csv               # GHI, DNI, DHI (cloudy/clear)
+│   ├── weather.csv                  # Hourly weather data
+│   ├── preprocessed/                # After step 1
+│   │   ├── total_preprocessed.csv
+│   │   ├── north_preprocessed.csv
+│   │   └── south_preprocessed.csv
+│   └── processed/                   # After step 2
+│       ├── total/
+│       │   ├── train.csv
+│       │   └── test.csv
+│       ├── north/
+│       └── south/
 ├── outputs/
-│   ├── models/                      # Saved model files
-│   ├── results/                     # JSON metrics
-│   └── plots/                       # Visualizations
-├── notebooks/
-│   ├── datenanalyse_uebersicht.ipynb   # Data analysis (German)
-│   └── wetter_korrelationen.ipynb      # Weather correlations (German)
-├── tests/                           # Unit tests
+│   ├── models/                      # Trained PyTorch models (.pt)
+│   ├── predictions/                 # Prediction CSV files
+│   └── results/                     # Metrics and plots per dataset
 ├── logs/                            # Log files
 ├── pyproject.toml                   # UV project config
 └── README.md                        # This file
 ```
 
-## Testing
+## Configuration
 
-Run unit tests with pytest:
+All pipeline parameters are configured in `config.yaml`:
 
-```bash
-# Run all tests
-uv run pytest
+**Model Parameters**:
+- `hidden_size`: 64
+- `num_layers`: 2
+- `dropout`: 0.2
+- `lookback_window`: 12
+- `batch_size`: 32
+- `epochs`: 50
+- `learning_rate`: 0.001
+- `patience`: 10 (early stopping)
 
-# Run with coverage
-uv run pytest --cov=src --cov-report=html
+**Data Processing**:
+- `train_test_split`: 0.8
+- `add_temporal_features`: true
+- Features: hour, day_of_year, month, hour_sin, hour_cos, day_of_year_sin, day_of_year_cos
 
-# Run specific test file
-uv run pytest tests/test_preprocessing.py -v
-```
+**Paths**: Configurable input/output directories
 
 ## Logging
 
 Logs are written to:
-- **Console**: Formatted with colors and timestamps
-- **Files**: `logs/solar_tracker_forecast_YYYYMMDD_HHMMSS.log`
+- **Console**: Formatted with colors and timestamps (Loguru)
+- **Files**: `logs/log_YYYYMMDD_HHMMSS.log`
 
-## Comparison: Baseline vs Advanced
+## Model Characteristics
 
-### Baseline Approach
-- **Pros**: Simple, fast, interpretable
-- **Cons**: Single feature (GHI), no tracker specificity, no weather context
-- **Use Case**: Quick estimate, low computational requirements
+**Strengths**:
+- Captures temporal dependencies with LSTM architecture
+- Separate models per tracker capture orientation-specific behavior
+- Temporal features enable seasonality learning
+- Multiple irradiance components (GHI, DNI, DHI) provide detailed input
+- Weather context improves prediction accuracy
 
-### Advanced Tracker-Specific Approach
-- **Pros**: Multiple features, tracker-specific models, weather context, orientation-aware
-- **Cons**: More complex, requires feature engineering, longer training time
-- **Use Case**: Higher accuracy requirements, production forecasting
-
-## Expected Results
-
-Based on correlation analysis:
-- GHI has strong correlation (r ≈ 0.9) with total PV
-- DNI, DHI provide additional orientation-specific information
-- Weather features (cloud cover, temperature) add context
-- Tracker-specific models should capture orientation differences (south vs north)
-
-**Hypothesis**: Advanced approach should achieve 10-20% lower RMSE compared to baseline.
+**Considerations**:
+- Requires sufficient training data (time series)
+- GPU recommended for faster training
+- Hyperparameter tuning may improve results
+- Early stopping prevents overfitting
 
 ## License
 
