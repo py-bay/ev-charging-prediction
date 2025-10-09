@@ -1,0 +1,45 @@
+# PV Solar Tracker Preprocessing Configuration
+
+# Data file paths
+data_paths:
+  pv: "data/pv_data.csv"
+  irradiance: "data/irradiance.csv"
+  weather: "data/weather.csv"
+
+# Preprocessing configuration
+preprocessing:
+  # Output directory for preprocessed data
+  output_dir: "data/preprocessed"
+
+  # Irradiance columns to include
+  irradiance_cols:
+    - ghi_cloudy_sky
+    - dni_cloudy_sky
+    - dhi_cloudy_sky
+    - ghi_clear_sky
+    - dni_clear_sky
+    - dhi_clear_sky
+
+  # Weather columns to include
+  weather_cols:
+    - temperature_2m
+    - cloud_cover
+    - wind_speed_10m
+    - precipitation
+    - weather_code
+    - relative_humidity_2m
+    - pressure_msl
+    - cloud_cover_low
+    - cloud_cover_mid
+    - cloud_cover_high
+    - wind_gusts_10m
+
+  # PV data columns
+  pv_cols:
+    total: "Solarproduktion"
+    tracker_north: "Solarproduktion Tracker 1"
+    tracker_south: "Solarproduktion Tracker 2"
+
+# Output paths
+output_paths:
+  logs: "logs"

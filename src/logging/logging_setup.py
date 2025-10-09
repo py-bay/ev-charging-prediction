@@ -31,7 +31,7 @@ def setup_logging(log_dir: Path = Path("logs"), log_level: str = "INFO"):
 
     # Add file handler with timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = log_dir / f"ev_charge_forecasting_{timestamp}.log"
+    log_file = log_dir / f"log_{timestamp}.log"
 
     logger.add(
         log_file,
