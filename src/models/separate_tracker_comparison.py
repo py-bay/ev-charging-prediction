@@ -338,11 +338,16 @@ class SeparateTrackerExperiment:
         logger.info(f"Train set: {len(df_train)} samples ({df_train.index.min()} to {df_train.index.max()})")
         logger.info(f"Test set: {len(df_test)} samples ({df_test.index.min()} to {df_test.index.max()})")
 
-        # Calculate historical ratio from training data (for baseline derivation)
-        train_ratio_south = df_train["pv_south"] / (df_train["pv_north"] + df_train["pv_south"] + 1e-6)
-        self.historical_ratio_south = train_ratio_south.mean()
-        logger.info(f"\n📊 Historical South Ratio (from training data): {self.historical_ratio_south:.4f}")
-        logger.info(f"   This will be used to derive tracker values from baseline predictions")
+        # Berechne das Ratio basierend auf Gesamtenergie (wie im Dokument)
+        total_energy_south = df_train["pv_south"].sum()
+        total_energy_north = df_train["pv_north"].sum()
+        total_energy_combined = total_energy_south + total_energy_north
+
+        self.historical_ratio_south = total_energy_south / total_energy_combined
+
+        logger.info(f"\n📊 Historical South Ratio (energy-based): {self.historical_ratio_south:.4f}")
+        logger.info(f"   South total: {total_energy_south:.2f}, North total: {total_energy_north:.2f}")
+        logger.info(f"   This should match ~65.5% from the document")
 
         # Normalize with single scaler
         logger.info("Normalizing data with MinMaxScaler...")
