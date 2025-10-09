@@ -1,11 +1,5 @@
-"""Evaluation module for solar forecasting."""
+"""Evaluation module for model performance analysis."""
 
-from .metrics import ModelEvaluator
-from .regression_metrics import RegressionMetricsCalculator
-from .regression_visualizer import RegressionVisualizer
+from .evaluator import ModelEvaluator
 
-__all__ = [
-    "ModelEvaluator",
-    "RegressionMetricsCalculator",
-    "RegressionVisualizer",
-]
+__all__ = ["ModelEvaluator"]

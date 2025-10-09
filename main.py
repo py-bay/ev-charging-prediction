@@ -5,6 +5,7 @@ This script orchestrates the complete pipeline:
 2. Processing: Add features, split train/test, and scale
 3. Training: Train LSTM models for all trackers
 4. Prediction: Make predictions on test data using trained models
+5. Evaluation: Calculate metrics and generate visualizations
 
 Each step can be run independently via command-line arguments.
 """
@@ -14,6 +15,7 @@ import logging
 from pathlib import Path
 
 from src.config.models import load_config
+from src.evaluation.evaluator import ModelEvaluator
 from src.logging.logging_setup import setup_logging
 from src.models.predictor import LSTMPredictor
 from src.models.trainer import LSTMTrainer
@@ -171,6 +173,56 @@ def run_prediction(config):
     logger.info("✓ All predictions completed successfully")
 
 
+def run_evaluation(config):
+    """Step 5: Evaluate model predictions.
+
+    Input: Predictions from output_paths.predictions
+    Output: Metrics and plots in output_paths.results
+    """
+    logger.info("="*60)
+    logger.info("STEP 5: EVALUATION")
+    logger.info("="*60)
+
+    # Define datasets to evaluate
+    datasets = ["total", "north", "south"]
+
+    # Create evaluator
+    evaluator = ModelEvaluator(config)
+
+    # Evaluate each dataset
+    all_metrics = {}
+    for dataset_name in datasets:
+        logger.info(f"\nEvaluating dataset: {dataset_name.upper()}")
+
+        predictions_file = config.output_paths.predictions / f"predictions_{dataset_name}.csv"
+
+        if not predictions_file.exists():
+            logger.warning(f"Predictions file not found: {predictions_file}")
+            continue
+
+        # Run evaluation
+        metrics = evaluator.evaluate_dataset(
+            predictions_path=predictions_file,
+            output_path=config.output_paths.results,
+            dataset_name=dataset_name,
+        )
+
+        all_metrics[dataset_name] = metrics
+
+    logger.info("✓ All evaluations completed successfully")
+
+    # Print summary
+    logger.info("\n" + "="*60)
+    logger.info("EVALUATION SUMMARY")
+    logger.info("="*60)
+    for dataset_name, metrics in all_metrics.items():
+        logger.info(f"\n{dataset_name.upper()}:")
+        logger.info(f"  MAE:  {metrics['mae']:.2f} W")
+        logger.info(f"  RMSE: {metrics['rmse']:.2f} W")
+        logger.info(f"  R²:   {metrics['r2']:.4f}")
+        logger.info(f"  MAPE: {metrics['mape']:.2f} %")
+
+
 def main():
     """Run the complete pipeline or individual steps."""
     parser = argparse.ArgumentParser(
@@ -193,14 +245,17 @@ Examples:
   # Run only prediction (requires trained models)
   python main.py --step prediction
 
-  # Run from training onwards (training + prediction)
-  python main.py --step training --continue
+  # Run only evaluation (requires predictions)
+  python main.py --step evaluation
+
+  # Run from prediction onwards (prediction + evaluation)
+  python main.py --step prediction --continue
         """
     )
 
     parser.add_argument(
         "--step",
-        choices=["preprocessing", "processing", "training", "prediction"],
+        choices=["preprocessing", "processing", "training", "prediction", "evaluation"],
         help="Run a specific pipeline step (default: run all steps)",
     )
 
@@ -235,12 +290,13 @@ Examples:
         "processing": run_processing,
         "training": run_training,
         "prediction": run_prediction,
+        "evaluation": run_evaluation,
     }
 
     # Determine which steps to run
     if args.step:
         # Run specific step
-        step_order = ["preprocessing", "processing", "training", "prediction"]
+        step_order = ["preprocessing", "processing", "training", "prediction", "evaluation"]
         start_idx = step_order.index(args.step)
 
         if args.continue_pipeline:
@@ -251,7 +307,7 @@ Examples:
             steps_to_run = [args.step]
     else:
         # Run all steps
-        steps_to_run = ["preprocessing", "processing", "training", "prediction"]
+        steps_to_run = ["preprocessing", "processing", "training", "prediction", "evaluation"]
 
     # Execute steps
     for step_name in steps_to_run:
