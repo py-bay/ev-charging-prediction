@@ -40,6 +40,50 @@ preprocessing:
     tracker_north: "Solarproduktion Tracker 1"
     tracker_south: "Solarproduktion Tracker 2"
 
+# Data processing configuration
+processing:
+  # Output directory for processed (train/test) data
+  output_dir: "data/processed"
+
+  # Train/test split ratio
+  train_test_split: 0.8  # 80% train, 20% test
+
+  # Add temporal features
+  add_temporal_features: true
+
+  # Temporal features to add
+  temporal_features:
+    - hour
+    - day_of_year
+    - month
+    - hour_sin
+    - hour_cos
+    - day_of_year_sin
+    - day_of_year_cos
+
+# LSTM model configuration
+model:
+  # Model architecture
+  hidden_size: 64  # Number of hidden units in LSTM layers
+  num_layers: 2  # Number of LSTM layers
+  dropout: 0.2  # Dropout rate for regularization
+
+  # Sequence configuration
+  lookback_window: 12  # Number of timesteps to look back (12 * 15min = 3 hours)
+
+  # Training configuration
+  batch_size: 32
+  epochs: 50
+  learning_rate: 0.001
+  patience: 10  # Early stopping patience
+
+  # Output paths
+  output_dir: "outputs/models"
+  checkpoint_dir: "outputs/checkpoints"
+
 # Output paths
 output_paths:
   logs: "logs"
+  models: "outputs/models"
+  results: "outputs/results"
+  plots: "outputs/plots"
