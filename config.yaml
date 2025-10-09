@@ -85,5 +85,6 @@ model:
 output_paths:
   logs: "logs"
   models: "outputs/models"
+  predictions: "outputs/predictions"
   results: "outputs/results"
   plots: "outputs/plots"

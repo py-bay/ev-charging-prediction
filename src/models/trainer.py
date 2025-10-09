@@ -251,6 +251,7 @@ class LSTMTrainer:
 
         torch.save({
             "model_state_dict": self.model.state_dict(),
+            "input_size": self.model.input_size,  # Save input size for loading
             "model_config": {
                 "hidden_size": self.model_config.hidden_size,
                 "num_layers": self.model_config.num_layers,
