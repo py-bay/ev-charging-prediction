@@ -25,6 +25,7 @@ class LSTMModel(nn.Module):
         """
         super(LSTMModel, self).__init__()
 
+        self.input_size = input_size
         self.hidden_size = hidden_size
         self.num_layers = num_layers
 
