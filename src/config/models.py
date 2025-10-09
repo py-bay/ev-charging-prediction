@@ -93,10 +93,11 @@ class OutputPaths(BaseModel):
 
     logs: Path
     models: Path
+    predictions: Path
     results: Path
     plots: Path
 
-    @field_validator("logs", "models", "results", "plots", mode="before")
+    @field_validator("logs", "models", "predictions", "results", "plots", mode="before")
     @classmethod
     def convert_to_path(cls, v: Any) -> Path:
         """Convert string to Path object."""
